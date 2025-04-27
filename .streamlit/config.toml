@@ -1,0 +1,11 @@
+[theme]
+primaryColor = "#FF6347"  # Tomato color
+backgroundColor = "#f0f0f0"  # Light gray background
+secondaryBackgroundColor = "#ffffff"  # White background for some sections
+textColor = "#000000"  # Black text color
+font = "sans serif"  # Font choice (you can also use 'serif', 'monospace', etc.)
+
+[server]
+headless = true
+port = $PORT
+enableCORS = false  # Disable CORS for production environments

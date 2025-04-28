@@ -1,38 +1,48 @@
-#include <WiFi.h>
-#include <HTTPClient.h>
+# app.py
+import streamlit as st
+import pandas as pd
+import requests
+import datetime
+import pytz
+import time
 
-const char* ssid = "YOUR_WIFI";
-const char* password = "YOUR_PASSWORD";
+# Title
+st.title("📈 Poultry Farm Dashboard")
 
-void setup() {
-  WiFi.begin(ssid, password);
-  Serial.begin(115200);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Connecting..");
-  }
-}
+# Real-time Clock
+current_time = datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d %H:%M:%S")
+st.subheader(f"🕰 Current Time: {current_time}")
 
-void loop() {
-  if(WiFi.status()== WL_CONNECTED){
-    HTTPClient http;
-    
-    String serverName = "https://sheetdb.io/api/v1/YOUR_SHEETDB_ID";
+# Read Data from Google Sheets
+SHEETDB_URL = "https://sheetdb.io/api/v1/fdqe7xmup9c8d"
 
-    http.begin(serverName);
-    http.addHeader("Content-Type", "application/json");
+try:
+    response = requests.get(SHEETDB_URL)
+    data = response.json()
 
-    float temperature = 28.5;
-    float humidity = 60.2;
-    String payload = "{\"data\": [{\"Temperature\": \"" + String(temperature) + "\", \"Humidity\": \"" + String(humidity) + "\", \"Timestamp\": \"" + String(millis()/1000) + "\"}]}";
+    # Convert to DataFrame
+    df = pd.DataFrame(data)
 
-    int httpResponseCode = http.POST(payload);
+    # Convert Timestamp
+    df['Timestamp'] = pd.to_datetime(df['Timestamp'], unit='s')  # because millis()/1000 sent
 
-    if(httpResponseCode>0){
-      String response = http.getString();
-      Serial.println(response);
-    }
-    http.end();
-  }
-  delay(10000); // send every 10 seconds
-}
+    # Sorting
+    df = df.sort_values('Timestamp')
+
+    # Display Table
+    st.dataframe(df.tail(10))
+
+    # Plot Temperature
+    st.subheader("🌡 Temperature over Time")
+    st.line_chart(df.set_index('Timestamp')['Temperature'])
+
+    # Plot Humidity
+    st.subheader("💧 Humidity over Time")
+    st.line_chart(df.set_index('Timestamp')['Humidity'])
+
+except Exception as e:
+    st.error(f"Error fetching data: {e}")
+
+# Auto Refresh every 10 seconds
+time.sleep(10)
+st.experimental_rerun()

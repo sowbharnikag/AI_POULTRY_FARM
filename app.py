@@ -18,7 +18,7 @@ def load_model():
 model = load_model()
 
 # --- ESP32 IP Address ---
-ESP32_IP = "http://192.168.1.55"   # <-- Change to your ESP32 IP Address shown in Arduino Serial Monitor
+ESP32_IP = "http://192.168.43.196"   # <-- Change to your ESP32 IP Address shown in Arduino Serial Monitor
 
 # --- Fetch Sensor Data ---
 try:

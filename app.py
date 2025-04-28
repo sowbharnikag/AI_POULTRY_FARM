@@ -1,48 +1,100 @@
-# app.py
 import streamlit as st
+import joblib
+import numpy as np
 import pandas as pd
-import requests
-import datetime
-import pytz
-import time
+import plotly.express as px
+from datetime import datetime
 
-# Title
-st.title("📈 Poultry Farm Dashboard")
+# --- Page Config ---
+st.set_page_config(page_title="AI Fogger Control", page_icon="🌡️", layout="centered")
 
-# Real-time Clock
-current_time = datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d %H:%M:%S")
-st.subheader(f"🕰 Current Time: {current_time}")
+# --- Load AI Model (cached) ---
+@st.cache_resource
+def load_model():
+    return joblib.load('fogger_dt_model.pkl')
 
-# Read Data from Google Sheets
-SHEETDB_URL = "https://sheetdb.io/api/v1/fdqe7xmup9c8d"
+model = load_model()
 
-try:
-    response = requests.get(SHEETDB_URL)
-    data = response.json()
+# --- Simulate Sensor Data ---
+hours = np.arange(0, 24, 1)
+temperature = 25 + 5 * np.sin(np.pi * hours / 12)
+humidity = 50 + 10 * np.cos(np.pi * hours / 12)
 
-    # Convert to DataFrame
-    df = pd.DataFrame(data)
+current_temperature = temperature[-1]
+current_humidity = humidity[-1]
 
-    # Convert Timestamp
-    df['Timestamp'] = pd.to_datetime(df['Timestamp'], unit='s')  # because millis()/1000 sent
+# --- AI Prediction ---
+input_features = [[current_temperature, current_humidity]]
+fogger_ai_prediction = model.predict(input_features)[0]  # 1 or 0
 
-    # Sorting
-    df = df.sort_values('Timestamp')
+# --- Streamlit UI ---
 
-    # Display Table
-    st.dataframe(df.tail(10))
+st.markdown("<h1 style='text-align: center;'>Temperature and Humidity Monitoring</h1>", unsafe_allow_html=True)
 
-    # Plot Temperature
-    st.subheader("🌡 Temperature over Time")
-    st.line_chart(df.set_index('Timestamp')['Temperature'])
+col1, col2 = st.columns(2)
+with col1:
+    st.metric(label="Temperature", value=f"{current_temperature:.1f}°C")
+with col2:
+    st.metric(label="Humidity", value=f"{current_humidity:.1f}%")
 
-    # Plot Humidity
-    st.subheader("💧 Humidity over Time")
-    st.line_chart(df.set_index('Timestamp')['Humidity'])
+st.markdown("---")
+st.subheader("Fogging Status")
 
-except Exception as e:
-    st.error(f"Error fetching data: {e}")
+# --- Initialize Session State ---
+if 'mode' not in st.session_state:
+    st.session_state.mode = 'auto'  # Default is Auto (AI)
 
-# Auto Refresh every 10 seconds
-time.sleep(10)
-st.experimental_rerun()
+# --- Control Buttons ---
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    if st.button("🔄 Auto (AI)"):
+        st.session_state.mode = 'auto'
+with col2:
+    if st.button("✅ Force ON"):
+        st.session_state.mode = 'force_on'
+with col3:
+    if st.button("❌ Force OFF"):
+        st.session_state.mode = 'force_off'
+
+# --- Determine Fogger State ---
+if st.session_state.mode == 'auto':
+    fogger_state = fogger_ai_prediction
+elif st.session_state.mode == 'force_on':
+    fogger_state = 1
+elif st.session_state.mode == 'force_off':
+    fogger_state = 0
+
+# --- Display Fogger Status ---
+if fogger_state == 1:
+    st.success(f"🚿 Fogger is ON ({st.session_state.mode.capitalize()})")
+else:
+    st.error(f"🌡️ Fogger is OFF ({st.session_state.mode.capitalize()})")
+
+# --- Plot Temperature and Humidity ---
+df = pd.DataFrame({
+    'Hour': hours,
+    'Temperature (°C)': temperature,
+    'Humidity (%)': humidity
+})
+
+fig = px.line(
+    df, 
+    x='Hour', 
+    y=['Temperature (°C)', 'Humidity (%)'],
+    title='Temperature and Humidity Over Time',
+    markers=True
+)
+
+fig.update_layout(
+    xaxis_title="Hour of the Day",
+    yaxis_title="Reading",
+    legend_title="Metrics",
+    template="plotly_white"
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+# --- Show Current Time ---
+current_time = datetime.now().strftime("%H:%M:%S")
+st.caption(f"Current Time: {current_time}")

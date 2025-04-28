@@ -18,8 +18,8 @@ def load_model():
 model = load_model()
 
 # --- ESP32 and SheetDB URLs ---
-ESP32_IP = "http://192.168.43.196"  # <-- Change
-SHEETDB_URL = "https://sheetdb.io/api/v1/fdqe7xmup9c8d"  # <-- Change
+ESP32_IP = "http://192.168.43.196"  # <-- Change to your ESP32 IP
+SHEETDB_URL = "https://sheetdb.io/api/v1/fdqe7xmup9c8d"  # <-- Change to your SheetDB API
 
 # --- Fetch Real-Time Sensor Data ---
 try:
@@ -31,10 +31,8 @@ except:
     current_temperature = 30.0
     current_humidity = 60.0
 
-current_hour = datetime.now().hour
-
 # --- AI Prediction ---
-input_features = [[current_temperature, current_humidity, current_hour]]
+input_features = [[current_temperature, current_humidity]]  # ❌ REMOVE current_hour
 fogger_ai_prediction = model.predict(input_features)[0]
 
 # --- Streamlit UI ---
@@ -94,9 +92,10 @@ try:
     response = requests.get(SHEETDB_URL)
     data = response.json()
     df = pd.DataFrame(data)
-    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
-    df['temperature'] = df['temperature'].astype(float)
-    df['humidity'] = df['humidity'].astype(float)
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s', errors='coerce')
+    df['temperature'] = pd.to_numeric(df['temperature'], errors='coerce')
+    df['humidity'] = pd.to_numeric(df['humidity'], errors='coerce')
+    df = df.dropna()
     df = df.sort_values('timestamp')
 except:
     st.error("❌ Could not load data from SheetDB.")

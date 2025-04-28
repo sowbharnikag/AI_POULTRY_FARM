@@ -17,9 +17,9 @@ def load_model():
 
 model = load_model()
 
-# --- ESP32 and SheetDB URLs ---
-ESP32_IP = "http://192.168.43.196"  # <-- Change to your ESP32 IP
-SHEETDB_URL = "https://sheetdb.io/api/v1/fdqe7xmup9c8d"  # <-- Change to your SheetDB API
+# --- ESP32 and Firebase URLs ---
+ESP32_IP = "http://192.168.43.196"  # <-- Your ESP32 IP
+FIREBASE_URL = "https://smartpoultryctrl-default-rtdb.firebaseio.com/sensor_data.json"  # <-- Your Firebase Realtime Database URL
 
 # --- Fetch Real-Time Sensor Data ---
 try:
@@ -32,7 +32,7 @@ except:
     current_humidity = 60.0
 
 # --- AI Prediction ---
-input_features = [[current_temperature, current_humidity]]  # ❌ REMOVE current_hour
+input_features = [[current_temperature, current_humidity]]  # Only Temp and Humidity
 fogger_ai_prediction = model.predict(input_features)[0]
 
 # --- Streamlit UI ---
@@ -87,18 +87,22 @@ else:
 
 st.markdown("---")
 
-# --- Fetch Historical Data from SheetDB ---
+# --- Fetch Historical Data from Firebase ---
 try:
-    response = requests.get(SHEETDB_URL)
+    response = requests.get(FIREBASE_URL)
     data = response.json()
-    df = pd.DataFrame(data)
-    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s', errors='coerce')
-    df['temperature'] = pd.to_numeric(df['temperature'], errors='coerce')
-    df['humidity'] = pd.to_numeric(df['humidity'], errors='coerce')
-    df = df.dropna()
-    df = df.sort_values('timestamp')
+
+    if data:
+        df = pd.DataFrame.from_dict(data, orient='index')
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s', errors='coerce')
+        df['temperature'] = pd.to_numeric(df['temperature'], errors='coerce')
+        df['humidity'] = pd.to_numeric(df['humidity'], errors='coerce')
+        df = df.dropna()
+        df = df.sort_values('timestamp')
+    else:
+        df = pd.DataFrame()
 except:
-    st.error("❌ Could not load data from SheetDB.")
+    st.error("❌ Could not load data from Firebase.")
     df = pd.DataFrame()
 
 # --- Plot Historical Data ---

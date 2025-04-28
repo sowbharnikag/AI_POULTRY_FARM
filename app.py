@@ -13,12 +13,12 @@ st.set_page_config(page_title="AI Fogger Control", page_icon="🌡️", layout="
 # --- Load AI Model ---
 @st.cache_resource
 def load_model():
-    return joblib.load('fogger_dt_model.pkl')  # Only your Decision Tree model
+    return joblib.load('fogger_dt_model.pkl')  # Using your Decision Tree model
 
 model = load_model()
 
 # --- ESP32 IP Address ---
-ESP32_IP = "http://192.168.1.10"   # Change this to your ESP32 actual IP Address
+ESP32_IP = "http://192.168.1.55"   # <-- Change to your ESP32 IP Address shown in Arduino Serial Monitor
 
 # --- Fetch Sensor Data ---
 try:
@@ -26,7 +26,7 @@ try:
     current_temperature = sensor_data['temperature']
     current_humidity = sensor_data['humidity']
 except Exception as e:
-    st.warning("⚠️ Failed to connect to ESP32! Showing simulated data.")
+    st.warning("⚠️ Could not connect to ESP32. Showing fallback data.")
     current_temperature = 30.0 + (datetime.now().second % 5)
     current_humidity = 60.0 + (datetime.now().second % 3)
 
@@ -35,12 +35,12 @@ current_hour = datetime.now().hour
 
 # --- AI Prediction ---
 input_features = [[current_temperature, current_humidity, current_hour]]
-fogger_ai_prediction = model.predict(input_features)[0]  # 1 or 0
+fogger_ai_prediction = model.predict(input_features)[0]  # 1 = ON, 0 = OFF
 
 # --- Streamlit UI ---
-st.markdown("<h1 style='text-align: center;'>🌡️ Temperature and Humidity Monitoring</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>🌡️ Poultry Farm Temperature Control (AI Powered)</h1>", unsafe_allow_html=True)
 
-# --- Display Current Temperature and Humidity ---
+# --- Show Temperature and Humidity ---
 col1, col2 = st.columns(2)
 with col1:
     st.metric(label="Current Temperature (°C)", value=f"{current_temperature:.1f}")
@@ -48,23 +48,22 @@ with col2:
     st.metric(label="Current Humidity (%)", value=f"{current_humidity:.1f}")
 
 st.markdown("---")
-st.subheader("Fogging System Status and Control")
+st.subheader("Fogging System Status and Manual Control")
 
-# --- Session State Initialization ---
+# --- Initialize Session State for Mode ---
 if 'mode' not in st.session_state:
-    st.session_state.mode = 'auto'  # Default to Auto (AI mode)
+    st.session_state.mode = 'auto'
 
 # --- Control Buttons ---
 col1, col2, col3 = st.columns(3)
-
 with col1:
-    if st.button("🔄 Auto (AI Control)"):
+    if st.button("🔄 Auto (AI Mode)"):
         st.session_state.mode = 'auto'
 with col2:
-    if st.button("✅ Force ON"):
+    if st.button("✅ Force Fogger ON"):
         st.session_state.mode = 'force_on'
 with col3:
-    if st.button("❌ Force OFF"):
+    if st.button("❌ Force Fogger OFF"):
         st.session_state.mode = 'force_off'
 
 # --- Determine Fogger State ---
@@ -79,19 +78,19 @@ elif st.session_state.mode == 'force_off':
 try:
     control_response = requests.get(f"{ESP32_IP}/control?fogger={fogger_state}", timeout=2)
     if control_response.status_code == 200:
-        st.success(f"✅ Fogger control command sent successfully! Mode: {st.session_state.mode.upper()}")
+        st.success(f"✅ Fogger control command sent! Mode: {st.session_state.mode.upper()}")
 except Exception as e:
-    st.warning("⚠️ Could not send fogger control command to ESP32.")
+    st.warning("⚠️ Failed to send control command to ESP32.")
 
-# --- Display Fogger Status ---
+# --- Show Fogger Status ---
 if fogger_state == 1:
-    st.success(f"🚿 Fogger is ON ({st.session_state.mode.capitalize()})")
+    st.success(f"🚿 Fogger is ON ({st.session_state.mode.capitalize()} Mode)")
 else:
-    st.error(f"🌡️ Fogger is OFF ({st.session_state.mode.capitalize()})")
+    st.error(f"🌡️ Fogger is OFF ({st.session_state.mode.capitalize()} Mode)")
 
 st.markdown("---")
 
-# --- Plot Simulated 24-hour Temperature and Humidity (for better look) ---
+# --- Plot Dummy 24-hour Temp/Humidity Graph for Display ---
 hours = np.arange(0, 24, 1)
 temp_sim = 25 + 5 * np.sin(np.pi * hours / 12)
 hum_sim = 50 + 10 * np.cos(np.pi * hours / 12)
@@ -106,13 +105,13 @@ fig = px.line(
     df,
     x='Hour',
     y=['Temperature (°C)', 'Humidity (%)'],
-    title='Simulated Temperature and Humidity Over 24 Hours',
+    title='Simulated Temperature and Humidity Trend',
     markers=True
 )
 
 fig.update_layout(
-    xaxis_title="Hour of the Day",
-    yaxis_title="Value",
+    xaxis_title="Hour of Day",
+    yaxis_title="Values",
     legend_title="Metrics",
     template="plotly_white"
 )
@@ -121,4 +120,4 @@ st.plotly_chart(fig, use_container_width=True)
 
 # --- Show Current Time ---
 current_time = datetime.now().strftime("%H:%M:%S")
-st.caption(f"🕒 Current Time: {current_time}")
+st.caption(f"🕒 Current System Time: {current_time}")

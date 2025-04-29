@@ -1,6 +1,6 @@
 [theme]
-primaryColor="#0A84FF"
-backgroundColor="#FFFFFF"
-secondaryBackgroundColor="#F2F2F2"
-textColor="#000000"
-font="sans serif"
+primaryColor = "#2E8B57"            # SeaGreen - buttons & accents
+backgroundColor = "#F9FBFA"         # Light neutral background
+secondaryBackgroundColor = "#EAF4F4"  # Soft greenish-blue panels
+textColor = "#2B2B2B"               # Dark gray text for readability
+font = "sans serif"

@@ -8,7 +8,7 @@ from datetime import datetime
 import pytz
 
 # --- Streamlit Config ---
-st.set_page_config(page_title="AI Fogger Control", page_icon="🌡️", layout="centered")
+st.set_page_config(page_title="AI Fogger Control", page_icon="🌡", layout="centered")
 
 # --- Load AI Model ---
 @st.cache_resource
@@ -18,25 +18,33 @@ def load_model():
 model = load_model()
 
 # --- ESP32 and Firebase URLs ---
-ESP32_IP = "http://192.168.43.196"  # <-- Your ESP32 IP
-FIREBASE_URL = "https://aipoultryctrl-default-rtdb.asia-southeast1.firebasedatabase.app/"  # <-- Your Firebase Realtime Database URL
+ESP32_IP = "http://192.168.43.196"  # <-- Your ESP32 IP (for fogger control)
+FIREBASE_URL = "https://aipoultryctrl-default-rtdb.asia-southeast1.firebasedatabase.app/sensor_data.json"  # Correct URL
 
-# --- Fetch Real-Time Sensor Data ---
+# --- Fetch Real-Time Sensor Data from Firebase ---
 try:
-    sensor_data = requests.get(f"{ESP32_IP}/sensor", timeout=2).json()
-    current_temperature = sensor_data['temperature']
-    current_humidity = sensor_data['humidity']
-except:
-    st.warning("⚠️ Could not connect to ESP32. Using fallback values.")
+    response = requests.get(FIREBASE_URL)
+    data = response.json()
+
+    if data:
+        last_entry = list(data.values())[-1]  # Get latest reading
+        current_temperature = last_entry['temperature']
+        current_humidity = last_entry['humidity']
+    else:
+        st.warning("⚠ No data found in Firebase. Using fallback values.")
+        current_temperature = 30.0
+        current_humidity = 60.0
+except Exception as e:
+    st.warning(f"⚠ Could not connect to Firebase. Error: {e}")
     current_temperature = 30.0
     current_humidity = 60.0
 
 # --- AI Prediction ---
-input_features = [[current_temperature, current_humidity]]  # Only Temp and Humidity
+input_features = [[current_temperature, current_humidity]]
 fogger_ai_prediction = model.predict(input_features)[0]
 
 # --- Streamlit UI ---
-st.markdown("<h1 style='text-align: center;'>🌡️ Poultry Farm Temperature Control (AI Powered)</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>🌡 Poultry Farm Temperature Control (AI Powered)</h1>", unsafe_allow_html=True)
 
 col1, col2 = st.columns(2)
 with col1:
@@ -77,17 +85,17 @@ try:
     if control_response.status_code == 200:
         st.success(f"✅ Fogger command sent! Mode: {st.session_state.mode.upper()}")
 except:
-    st.warning("⚠️ Failed to send control command to ESP32.")
+    st.warning("⚠ Failed to send control command to ESP32.")
 
 # --- Show Fogger Status ---
 if fogger_state == 1:
     st.success(f"🚿 Fogger is ON ({st.session_state.mode.capitalize()} Mode)")
 else:
-    st.error(f"🌡️ Fogger is OFF ({st.session_state.mode.capitalize()} Mode)")
+    st.error(f"🌡 Fogger is OFF ({st.session_state.mode.capitalize()} Mode)")
 
 st.markdown("---")
 
-# --- Fetch Historical Data from Firebase ---
+# --- Fetch and Plot Historical Data ---
 try:
     response = requests.get(FIREBASE_URL)
     data = response.json()

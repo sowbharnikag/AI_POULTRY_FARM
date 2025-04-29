@@ -6,44 +6,50 @@ import plotly.express as px
 from datetime import datetime
 import pytz
 
-# --- Configuration ---
+# --- Streamlit Config ---
 st.set_page_config(page_title="AI Fogger Control", page_icon="🌡", layout="centered")
-ESP32_IP = "http://192.168.43.196"  # Change this if ESP32 IP changes
-FIREBASE_URL = "https://aipoultryctrl-default-rtdb.asia-southeast1.firebasedatabase.app/"  # Your Firebase URL
 
 # --- Load AI Model ---
 @st.cache_resource
 def load_model():
-    return joblib.load("fogger_dt_model.pkl")
+    return joblib.load('fogger_dt_model.pkl')
 
 model = load_model()
 
-# --- UI Header ---
-st.markdown("<h1 style='text-align: center;'>🌡 AI-Powered Poultry Farm Control</h1>", unsafe_allow_html=True)
+# --- ESP32 and Firebase URLs ---
+ESP32_IP = "http://192.168.43.196"  # <-- Your ESP32 IP (ensure this is correct!)
+FIREBASE_URL = "https://aipoultryctrl-default-rtdb.asia-southeast1.firebasedatabase.app/"  # <-- Your Firebase URL
 
-# --- Fetch Sensor Data ---
-try:
-    sensor_data = requests.get(f"{ESP32_IP}/sensor", timeout=2).json()
-    current_temperature = sensor_data.get('temperature', 30.0)
-    current_humidity = sensor_data.get('humidity', 60.0)
-except Exception as e:
-    st.warning("⚠ Could not connect to ESP32. Using fallback values.")
-    current_temperature = 30.0
-    current_humidity = 60.0
+# --- Fetch Real-Time Sensor Data ---
+def fetch_sensor_data():
+    try:
+        sensor_data = requests.get(f"{ESP32_IP}/sensor", timeout=5).json()  # Increased timeout
+        current_temperature = sensor_data['temperature']
+        current_humidity = sensor_data['humidity']
+        return current_temperature, current_humidity
+    except requests.exceptions.RequestException as e:
+        st.warning(f"⚠ Could not connect to ESP32: {e}")
+        return 30.0, 60.0  # Fallback values
+
+current_temperature, current_humidity = fetch_sensor_data()
 
 # --- AI Prediction ---
-input_data = [[current_temperature, current_humidity]]
-ai_prediction = model.predict(input_data)[0]
+input_features = [[current_temperature, current_humidity]]  # Only Temp and Humidity
+fogger_ai_prediction = model.predict(input_features)[0]
 
-# --- Display Metrics ---
+# --- Streamlit UI ---
+st.markdown("<h1 style='text-align: center;'>🌡 Poultry Farm Temperature Control (AI Powered)</h1>", unsafe_allow_html=True)
+
 col1, col2 = st.columns(2)
-col1.metric("Temperature (°C)", f"{current_temperature:.1f}")
-col2.metric("Humidity (%)", f"{current_humidity:.1f}")
+with col1:
+    st.metric(label="Current Temperature (°C)", value=f"{current_temperature:.1f}")
+with col2:
+    st.metric(label="Current Humidity (%)", value=f"{current_humidity:.1f}")
 
-st.divider()
-st.subheader("🧠 Fogger Mode & Manual Control")
+st.markdown("---")
+st.subheader("Fogging System Status and Manual Control")
 
-# --- Session State ---
+# --- Initialize Session State ---
 if 'mode' not in st.session_state:
     st.session_state.mode = 'auto'
 
@@ -53,65 +59,83 @@ with col1:
     if st.button("🔄 Auto (AI Mode)"):
         st.session_state.mode = 'auto'
 with col2:
-    if st.button("✅ Force ON"):
+    if st.button("✅ Force Fogger ON"):
         st.session_state.mode = 'force_on'
 with col3:
-    if st.button("❌ Force OFF"):
+    if st.button("❌ Force Fogger OFF"):
         st.session_state.mode = 'force_off'
 
-# --- Determine Final Fogger State ---
+# --- Determine Fogger State ---
 if st.session_state.mode == 'auto':
-    fogger_state = ai_prediction
+    fogger_state = fogger_ai_prediction
 elif st.session_state.mode == 'force_on':
     fogger_state = 1
 elif st.session_state.mode == 'force_off':
     fogger_state = 0
 
-# --- Send Command to ESP32 ---
-try:
-    control_response = requests.get(f"{ESP32_IP}/control?fogger={fogger_state}", timeout=2)
-    if control_response.status_code == 200:
-        st.success(f"✅ Fogger Command Sent ({st.session_state.mode.upper()} Mode)")
-    else:
-        st.error("❌ ESP32 responded with error.")
-except Exception as e:
-    st.warning("⚠ Failed to send control command to ESP32.")
+# --- Send Control Command to ESP32 ---
+def send_fogger_command(fogger_state):
+    try:
+        control_response = requests.get(f"{ESP32_IP}/control?fogger={fogger_state}", timeout=5)
+        if control_response.status_code == 200:
+            st.success(f"✅ Fogger command sent! Mode: {st.session_state.mode.upper()}")
+        else:
+            st.warning(f"⚠ Failed to send control command: {control_response.status_code}")
+    except requests.exceptions.RequestException as e:
+        st.warning(f"⚠ Failed to send control command to ESP32: {e}")
 
-# --- Display Fogger Status ---
+send_fogger_command(fogger_state)
+
+# --- Show Fogger Status ---
 if fogger_state == 1:
-    st.success("🚿 Fogger is ON")
+    st.success(f"🚿 Fogger is ON ({st.session_state.mode.capitalize()} Mode)")
 else:
-    st.error("🌡 Fogger is OFF")
+    st.error(f"🌡 Fogger is OFF ({st.session_state.mode.capitalize()} Mode)")
 
-st.divider()
-st.subheader("📊 Historical Data from Firebase")
+st.markdown("---")
 
-# --- Firebase Historical Data ---
-try:
-    response = requests.get(FIREBASE_URL)
-    data = response.json()
+# --- Fetch Historical Data from Firebase ---
+def fetch_firebase_data():
+    try:
+        response = requests.get(f"{FIREBASE_URL}/sensor_data.json", timeout=5)  # Increased timeout
+        if response.status_code == 200:
+            data = response.json()
+            if data:
+                df = pd.DataFrame.from_dict(data, orient='index')
+                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s', errors='coerce')
+                df['temperature'] = pd.to_numeric(df['temperature'], errors='coerce')
+                df['humidity'] = pd.to_numeric(df['humidity'], errors='coerce')
+                df = df.dropna()
+                df = df.sort_values('timestamp')
+                return df
+            else:
+                return pd.DataFrame()
+        else:
+            st.error("❌ Firebase returned an error.")
+            return pd.DataFrame()
+    except requests.exceptions.RequestException as e:
+        st.error(f"❌ Failed to fetch data from Firebase: {e}")
+        return pd.DataFrame()
 
-    if data:
-        df = pd.DataFrame.from_dict(data, orient='index')
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s', errors='coerce')
-        df['temperature'] = pd.to_numeric(df['temperature'], errors='coerce')
-        df['humidity'] = pd.to_numeric(df['humidity'], errors='coerce')
-        df = df.dropna().sort_values('timestamp')
-    else:
-        df = pd.DataFrame()
-except Exception as e:
-    st.error("❌ Could not fetch data from Firebase.")
-    df = pd.DataFrame()
+df = fetch_firebase_data()
 
-# --- Plotting Historical Data ---
+# --- Plot Historical Data ---
 if not df.empty:
-    fig = px.line(df, x='timestamp', y=['temperature', 'humidity'],
-                  title='Temperature & Humidity Over Time', markers=True)
-    fig.update_layout(xaxis_title="Timestamp", yaxis_title="Value", legend_title="Sensor")
+    fig = px.line(
+        df,
+        x='timestamp',
+        y=['temperature', 'humidity'],
+        title='Live Temperature and Humidity History',
+        markers=True
+    )
+    fig.update_layout(
+        xaxis_title="Time",
+        yaxis_title="Values",
+        legend_title="Metrics",
+        template="plotly_white"
+    )
     st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("No historical data to display yet.")
 
-# --- Timestamp ---
-now = datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%H:%M:%S")
-st.caption(f"🕒 Last updated: {now}")
+# --- Show Current Time ---
+current_time = datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%H:%M:%S")
+st.caption(f"🕒 Current System Time: {current_time}")

@@ -19,7 +19,7 @@ model = load_model()
 
 # --- ESP32 and Firebase URLs ---
 ESP32_IP = "http://192.168.43.196"  # <-- Your ESP32 IP
-FIREBASE_URL = "https://smartpoultryctrl-default-rtdb.firebaseio.com/sensor_data.json"  # <-- Your Firebase Realtime Database URL
+FIREBASE_URL = "https://aipoultryctrl-default-rtdb.asia-southeast1.firebasedatabase.app/"  # <-- Your Firebase Realtime Database URL
 
 # --- Fetch Real-Time Sensor Data ---
 try:
